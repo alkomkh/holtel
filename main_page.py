@@ -17,28 +17,21 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
 
     date = date_now
 
-    for i in range(10):
-        data_columns.append(ft.DataColumn(ft.Text(date)))
-        date_list.append(date)
+    for i in range(30):
         date = date_now + datetime.timedelta(days=i)
+        data_columns.append(ft.DataColumn(ft.Text(date.date())))
+        date_list.append(date)
         
     rooms = cursor.execute(f"""SELECT * FROM rooms""").fetchall()
-    # print(rooms)
     rows = []
-    # print(date_list)
-    # print(date_list[0])
     for room in rooms:
         cells_list = []
         for i in date_list:
             date_str = i.strftime('%Y-%m-%d %H:%M:%S')
-            # res = cursor.execute(f"""SELECT * FROM reservations WHERE room_id = ?""", (room[0],)).fetchall()
             res = cursor.execute(f"""SELECT * FROM reservations WHERE room_id = ? AND start_date <= ? AND finish_date >= ?""", (room[0], date_str, date_str)).fetchall()
-            # print(res)
             if res:
                 cells_list.append(ft.DataCell(content=ft.Text("Занято", bgcolor=ft.colors.RED)))
-                print("ZANYATO")
             else:
-                print("SVOBODNO")
                 cells_list.append(ft.DataCell(content=ft.Text("Свободно", bgcolor=ft.colors.GREEN)))
 
         rows.append(ft.DataRow(cells=cells_list))
@@ -51,6 +44,7 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
     table = ft.DataTable(
         columns=data_columns,
         rows=rows
+        # width=page_.width
     )
 
     async def add_res(e):
@@ -199,13 +193,8 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
 
     
 
-    view_ = ft.View("/main", [ 
-        ft.Row(controls=[
-
-        ]),
-        table
-         ])
-    
+    view_ = ft.View("/main", [ft.Row(controls=[table], scroll=ft.ScrollMode.ALWAYS)])
+        
     view_.floating_action_button = ft.FloatingActionButton(icon=ft.icons.ADD, on_click=add_res)
 
     view_.appbar = ft.AppBar(leading=ft.Icon(ft.icons.HOTEL), title=ft.Text("Hostel"),
