@@ -35,7 +35,12 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
                 f"""SELECT * FROM reservations WHERE room_id = ? AND start_date <= ? AND finish_date >= ?""",
                 (room[0], date_str, date_str)).fetchall()
             if res:
-                cells_list.append(ft.DataCell(content=ft.Text("Занято", bgcolor=ft.colors.RED)))
+                if res[0][7] == "занято":
+                        cells_list.append(ft.DataCell(content=ft.Text("Занято", bgcolor=ft.colors.RED)))
+                elif res[0][7] == "забронированно":
+                    cells_list.append(ft.DataCell(content=ft.Text("Забронированно", bgcolor=ft.colors.BLUE)))
+                elif res[0][7] == "свободно":
+                    cells_list.append(ft.DataCell(content=ft.Text("Свободно", bgcolor=ft.colors.GREEN)))
             else:
                 cells_list.append(ft.DataCell(content=ft.Text("Свободно", bgcolor=ft.colors.GREEN)))
 
@@ -51,9 +56,9 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
 
         async def add(e):
             cursor.execute(
-                f"""INSERT INTO reservations (room_id, start_date, finish_date, name, surname, passport) VALUES (?, ?, ?, ?, ?, ?)""",
+                f"""INSERT INTO reservations (room_id, start_date, finish_date, name, surname, passport, status) VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (room_id_field.value, date_first.value, date_last.value, name_field.value, surname_field.value,
-                 passport_field.value))
+                 passport_field.value, "забронированно"))
             db.commit()
             dlg.open = False
             await page_.go_async("/")
@@ -86,8 +91,7 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
             await date_last.pick_date_async()
 
         dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Добавит бронирование"),
+            title=ft.Text("Добавить бронирование"),
             content=ft.Column(controls=[
                 name_field,
                 surname_field,
@@ -96,7 +100,7 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
                 ft.TextButton("Выбрать дату начала", on_click=first_callback),
                 ft.TextButton("Выбрать дату конца", on_click=last_callback)
 
-            ]),
+            ], tight=True),
             actions=[ft.TextButton(text="Добавить", on_click=add), ft.TextButton(text="Отмена", on_click=close)])
 
         dlg.open = True
@@ -117,7 +121,7 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
                 self.button = ft.IconButton(icon=ft.icons.DELETE, on_click=self.del_res)
                 
             async def del_res(self, e):
-                cursor.execute(f"""UPDATE reservations SET finish_date = '{date_now}' WHERE id = {self.id}""")
+                cursor.execute(f"""DELETE FROM reservations WHERE id = {self.id}""")
                 db.commit()
                 end_reservation_dialog.open = False
                 await page_.go_async("/")
@@ -136,18 +140,18 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
             end_reservation_dialog.open = False
             await page_.update_async()
             
-        res = cursor.execute(f"""SELECT * FROM reservations WHERE finish_date >= ?""", (date_now.strftime('%Y-%m-%d %H:%M:%S'),)).fetchall()
+        res = cursor.execute(f"""SELECT * FROM reservations WHERE finish_date >= ? AND status = ?""", (date_now.strftime('%Y-%m-%d %H:%M:%S'), "забронированно")).fetchall()
         res_rows = []
 
         for req in res:
             res_rows.append(await TableRow(req[0],req[1],req[2],req[3],req[4],req[5],req[6],).get_row())
         
-        res_culumns = [ft.DataColumn(ft.Text("Номер номера")),
+        res_culumns = [ft.DataColumn(ft.Text("Номер")),
                        ft.DataColumn(ft.Text("Фамилия постояльца")),
                        ft.DataColumn(ft.Text("Имя постояльца")),
                        ft.DataColumn(ft.Text("Паспортные данные постояльца")),
-                       ft.DataColumn(ft.Text("Дата заселения")),
-                       ft.DataColumn(ft.Text("Дата выселения")),
+                       ft.DataColumn(ft.Text("Дата начала")),
+                       ft.DataColumn(ft.Text("Дата окончания")),
                        ft.DataColumn(ft.Text(""))]
         
 
@@ -157,8 +161,8 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
                 rows=res_rows
         )
 
-        end_reservation_dialog = ft.AlertDialog(modal=True, 
-                             title=ft.Text("Выселение"),
+        end_reservation_dialog = ft.AlertDialog(
+                             title=ft.Text("Завершение"),
                              content=res_table,
                              actions=[ft.TextButton(text="закрыть", on_click=close_res)])
 
@@ -166,7 +170,62 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
         page_.dialog = end_reservation_dialog
         end_reservation_dialog.open=True
         await page_.update_async()
-    
+
+    async def check_in(e):
+        class TableRow:
+            def __init__(self, id, room_id, start_date, finish_date, name, surname, passport):
+                self.id = id
+                self.room_id = room_id
+                self.start_date = start_date
+                self.finish_date = finish_date
+                self.name = name
+                self.surname = surname
+                self.passport = passport
+                self.button = ft.IconButton(icon=ft.icons.NAVIGATE_NEXT, on_click=self.check_in_res)
+
+            async def check_in_res(self, e):
+                cursor.execute(f"""UPDATE reservations SET status = '{"занято"}' WHERE id = {self.id}""")
+                db.commit()
+                check_in_dialog.open = False
+                await page_.go_async("/")
+
+            async def get_row(self):
+                res_cells_list = [ft.DataCell(ft.Text(self.room_id)),
+                                  ft.DataCell(ft.Text(self.surname)),
+                                  ft.DataCell(ft.Text(self.name)),
+                                  ft.DataCell(ft.Text(self.passport)),
+                                  ft.DataCell(ft.Text(self.start_date)),
+                                  ft.DataCell(ft.Text(self.finish_date)),
+                                  ft.DataCell(self.button)]
+                return ft.DataRow(cells=res_cells_list)
+
+        res = cursor.execute(f"""SELECT * FROM reservations WHERE finish_date >= ? AND status = ?""",
+                             (date_now.strftime('%Y-%m-%d %H:%M:%S'), "забронированно")).fetchall()
+        res_rows = []
+
+        for req in res:
+            res_rows.append(await TableRow(req[0], req[1], req[2], req[3], req[4], req[5], req[6], ).get_row())
+
+        res_culumns = [ft.DataColumn(ft.Text("Номер")),
+                       ft.DataColumn(ft.Text("Фамилия постояльца")),
+                       ft.DataColumn(ft.Text("Имя постояльца")),
+                       ft.DataColumn(ft.Text("Паспортные данные постояльца")),
+                       ft.DataColumn(ft.Text("Дата начала")),
+                       ft.DataColumn(ft.Text("Дата окончания")),
+                       ft.DataColumn(ft.Text(""))]
+
+        res_table = ft.DataTable(
+            columns=res_culumns,
+            rows=res_rows
+        )
+
+        check_in_dialog = ft.AlertDialog(title=ft.Text("Заселение по бронированию"),
+                                         content=res_table)
+
+        page_.dialog = check_in_dialog
+        check_in_dialog.open = True
+        await page_.update_async()
+
     # page_.floating_action_button = ft.FloatingActionButton(icon=ft.icons.ADD, on_click=add_res)
 
     # # async def add_guest(e):
@@ -262,10 +321,18 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
     #     ft.PopupMenuItem(content=ft.TextButton(text="Выселить постояльца", on_click=change_end_reservation_date)),
     # ])
 
+    import pdf
+
+    async def pay_off(e):
+        file = "docs-dkp-agreement.pdf"
+        await page_.launch_url_async(f"/download?filename={file}")
+
     view_.appbar = ft.AppBar(leading=ft.Icon(ft.icons.HOTEL), title=ft.Text("Система учета занятых номеров"),
                              bgcolor=ft.colors.SURFACE_VARIANT,
                              actions=[ft.TextButton(text="Добавить бронирование", on_click=add_res),
-                                      ft.TextButton(text="Выселить досрочно", on_click=change_end_reservation_date),
+                                      ft.TextButton(text="Заселить по бронированию", on_click=check_in),
+                                      ft.TextButton(text="Удалить бронирование", on_click=change_end_reservation_date),
+                                      ft.TextButton(text="Выселить", on_click=pay_off),
                                       ft.IconButton(icon=ft.icons.LOGOUT, on_click=logout),
                                       ft.IconButton(icon=ft.icons.HELP_OUTLINE)])
 

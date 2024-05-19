@@ -9,7 +9,6 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
         res = cursor.execute(
             f"SELECT user_id FROM users WHERE login='{login_field.value}' AND password='{password_field.value}'").fetchall()
         if res:
-            print(res)
             page_.session.set("id", res[0][0])
             page_.session.set("login", True)
             await page_.go_async("/")
