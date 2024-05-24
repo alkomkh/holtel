@@ -1,6 +1,7 @@
 import flet as ft
 import sqlite3
 import datetime
+import pdf
 
 controls_list = []
 
@@ -226,6 +227,85 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
         check_in_dialog.open = True
         await page_.update_async()
 
+
+
+
+
+    async def check_out(e):
+        class TableRow:
+            def __init__(self, id, room_id, start_date, finish_date, name, surname, passport):
+                self.id = id
+                self.room_id = room_id
+                self.start_date = start_date
+                self.finish_date = finish_date
+                self.name = name
+                self.surname = surname
+                self.passport = passport
+                self.button = ft.IconButton(icon=ft.icons.NAVIGATE_NEXT, on_click=self.check_out_res)
+
+            async def check_out_res(self, e):
+                cursor.execute(f"""UPDATE reservations SET status = '{"выселено"}', finish_date = '{date_now.strftime('%Y-%m-%d %H:%M:%S')}'  WHERE id = {self.id}""")
+                db.commit()
+                check_out_dialog.open = False
+                await page_.go_async("/")
+
+                payment_res = cursor.execute(f"""SELECT room_id, start_date, finish_date FROM reservations WHERE id = {self.id}""").fetchall()
+                room_cost = cursor.execute(f"""SELECT cost FROM rooms WHERE id = {payment_res[0][0]}""").fetchall()
+
+                start_date = datetime.datetime.strptime(payment_res[0][1], '%Y-%m-%d %H:%M:%S')
+                finish_date = datetime.datetime.strptime(payment_res[0][2], '%Y-%m-%d %H:%M:%S')
+
+                delta = finish_date - start_date
+
+                pdf.get_pdf(["Номер", "Суточная стоимость", "Количество дней", "Итого к оплате "],
+                            [[payment_res[0][0], room_cost[0][0], delta.days, delta.days * room_cost[0][0]], ])
+
+            async def get_row(self):
+                res_cells_list = [ft.DataCell(ft.Text(self.room_id)),
+                                  ft.DataCell(ft.Text(self.surname)),
+                                  ft.DataCell(ft.Text(self.name)),
+                                  ft.DataCell(ft.Text(self.passport)),
+                                  ft.DataCell(ft.Text(self.start_date)),
+                                  ft.DataCell(ft.Text(self.finish_date)),
+                                  ft.DataCell(self.button)]
+                return ft.DataRow(cells=res_cells_list)
+
+
+
+        res = cursor.execute(f"""SELECT * FROM reservations WHERE status = ?""",
+                             ("занято",)).fetchall()
+        res_rows = []
+
+        for req in res:
+            res_rows.append(await TableRow(req[0], req[1], req[2], req[3], req[4], req[5], req[6], ).get_row())
+
+        res_culumns = [ft.DataColumn(ft.Text("Номер")),
+                       ft.DataColumn(ft.Text("Фамилия постояльца")),
+                       ft.DataColumn(ft.Text("Имя постояльца")),
+                       ft.DataColumn(ft.Text("Паспортные данные постояльца")),
+                       ft.DataColumn(ft.Text("Дата начала")),
+                       ft.DataColumn(ft.Text("Дата окончания")),
+                       ft.DataColumn(ft.Text(""))]
+
+        res_table = ft.DataTable(
+            columns=res_culumns,
+            rows=res_rows
+        )
+
+        check_out_dialog = ft.AlertDialog(title=ft.Text("Выселение"),
+                                         content=res_table)
+
+        page_.dialog = check_out_dialog
+        check_out_dialog.open = True
+        await page_.update_async()
+
+
+
+
+
+
+
+
     # page_.floating_action_button = ft.FloatingActionButton(icon=ft.icons.ADD, on_click=add_res)
 
     # # async def add_guest(e):
@@ -324,15 +404,16 @@ async def view(db: sqlite3.Connection, page_: ft.Page):
     import pdf
 
     async def pay_off(e):
-        file = "docs-dkp-agreement.pdf"
-        await page_.launch_url_async(f"/download?filename={file}")
+        # file = "docs-dkp-agreement.pdf"
+        # await page_.launch_url_async(f"/download?filename={file}")
+        pdf.get_pdf("Вот это да",["Номер","Сумма","Количество дней","Итого к оплате "],[[2,220,4,880],])
 
     view_.appbar = ft.AppBar(leading=ft.Icon(ft.icons.HOTEL), title=ft.Text("Система учета занятых номеров"),
                              bgcolor=ft.colors.SURFACE_VARIANT,
                              actions=[ft.TextButton(text="Добавить бронирование", on_click=add_res),
                                       ft.TextButton(text="Заселить по бронированию", on_click=check_in),
                                       ft.TextButton(text="Удалить бронирование", on_click=change_end_reservation_date),
-                                      ft.TextButton(text="Выселить", on_click=pay_off),
+                                      ft.TextButton(text="Выселить", on_click=check_out),
                                       ft.IconButton(icon=ft.icons.LOGOUT, on_click=logout),
                                       ft.IconButton(icon=ft.icons.HELP_OUTLINE)])
 

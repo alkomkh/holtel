@@ -5,6 +5,7 @@ import login_page, main_page
 from fastapi.responses import FileResponse
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+import uvicorn
 
 
 database = sqlite3.connect("database.db")
@@ -65,3 +66,6 @@ async def download(filename: str):
     return FileResponse(f"docs/{filename}", media_type='application/pdf')
 
 app.mount('/', flet_fastapi.app(main))
+
+if __name__ == "__main__":
+    uvicorn.run(app)
